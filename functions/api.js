@@ -29,7 +29,7 @@ export async function onRequest(context) {
     const bodyText = await request.text();
     
     // Target Google Apps Script Web App URL (Authorized Public Deployment)
-    let gasUrl = "https://script.google.com/macros/s/AKfycbzfdtJ_5z4HgP7lH09sUT2vXbLuyu8qClsl88ZdTFfo8Xu9ZbDDRXU7Bpi8vqAxixCDFA/exec";
+    let gasUrl = "https://script.google.com/macros/s/AKfycbxU77KoD0WFm5IBZQfuQiGpiBUdFxpt0D4CwnJI8_rt9Wi4a9oIRRq9ZKqLUl6maJHNsA/exec";
     
     // Fetch with manual redirect mode to preserve POST method across 302 redirects
     let response = await fetch(gasUrl, {
