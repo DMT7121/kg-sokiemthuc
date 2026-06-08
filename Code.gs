@@ -190,3 +190,47 @@ function createBothPdfs(month, year) {
 function getPdfHistory() {
   return runApi(HistoryService.getPdfHistory);
 }
+
+/**
+ * Handles incoming POST requests (API endpoints) when hosted on external platforms like Cloudflare Pages.
+ */
+function doPost(e) {
+  try {
+    var requestData = JSON.parse(e.postData.contents);
+    var methodName = requestData.method;
+    var args = requestData.args || [];
+    
+    // Whitelist allowed API methods for security
+    var allowedMethods = [
+      "getAppInitData", "getMonthlyData", "saveMonthlyData", 
+      "getPreviewData", "createBeforeEatPdf", "createProcessingPdf", 
+      "createBothPdfs", "getPdfHistory", "saveConfig", "saveMenu", "importMenu", 
+      "getIngredients", "saveIngredients", "getKitchenStaff", "saveStaff", 
+      "regenerateDayData"
+    ];
+
+    if (allowedMethods.indexOf(methodName) === -1) {
+      throw new Error("Method not allowed: " + methodName);
+    }
+
+    // Resolve the service function
+    var func = this[methodName];
+    if (typeof func !== "function") {
+      throw new Error("Method not found: " + methodName);
+    }
+
+    // Execute using the function
+    var result = func.apply(null, args);
+    
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    var errorResult = {
+      success: false,
+      error: err.message || err.toString()
+    };
+    return ContentService.createTextOutput(JSON.stringify(errorResult))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}

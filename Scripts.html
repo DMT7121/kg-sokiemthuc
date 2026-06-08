@@ -106,10 +106,46 @@
     }, 3500);
   }
 
+  // Base URL for API when running on Cloudflare Pages (proxied via Pages Functions)
+  var API_URL = "/api";
+
   function callBackend(methodName, args, successCallback, errorCallback) {
     showLoading();
-    google.script.run
-      .withSuccessHandler(function(response) {
+
+    // Check if we are running in Google Apps Script environment
+    if (typeof google !== "undefined" && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(function(response) {
+          hideLoading();
+          if (response && response.success) {
+            if (successCallback) successCallback(response.data);
+          } else {
+            var errorMsg = (response && response.error) ? response.error : "Lỗi hệ thống.";
+            showToast(errorMsg, "error");
+            if (errorCallback) errorCallback(response);
+          }
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          showToast("Lỗi kết nối máy chủ: " + err.toString(), "error");
+          if (errorCallback) errorCallback(err);
+        })[methodName].apply(google.script.run, args || []);
+    } else {
+      // Running on Cloudflare Pages - call Apps Script via fetch HTTP POST
+      fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: JSON.stringify({
+          method: methodName,
+          args: args
+        })
+      })
+      .then(function(res) {
+        return res.json();
+      })
+      .then(function(response) {
         hideLoading();
         if (response && response.success) {
           if (successCallback) successCallback(response.data);
@@ -119,11 +155,12 @@
           if (errorCallback) errorCallback(response);
         }
       })
-      .withFailureHandler(function(err) {
+      .catch(function(err) {
         hideLoading();
-        showToast("Lỗi kết nối máy chủ: " + err.toString(), "error");
+        showToast("Lỗi kết nối API Cloudflare -> GAS: " + err.toString(), "error");
         if (errorCallback) errorCallback(err);
-      })[methodName].apply(google.script.run, args || []);
+      });
+    }
   }
 
   // ==========================================

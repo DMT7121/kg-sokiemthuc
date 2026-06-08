@@ -1,0 +1,7 @@
+**/*.js
+.git/**
+node_modules/**
+dist/**
+functions/**
+build.js
+.gitignore

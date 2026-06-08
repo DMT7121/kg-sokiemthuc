@@ -5,3 +5,5 @@ Thumbs.db
 .temp/
 .tempmediaStorage/
 *~
+dist/
+.wrangler/
