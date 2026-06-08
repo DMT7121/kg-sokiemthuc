@@ -219,8 +219,9 @@ function doPost(e) {
       "getAppInitData", "getMonthlyData", "saveMonthlyData", 
       "getPreviewData", "createBeforeEatPdf", "createProcessingPdf", 
       "createBothPdfs", "getPdfHistory", "saveConfig", "saveMenu", "importMenu", 
-      "getIngredients", "saveIngredients", "getKitchenStaff", "saveStaff", 
-      "regenerateDayData"
+      "getIngredients", "saveIngredients", "getKitchenStaff", "saveKitchenStaff", 
+      "regenerateDayData", "suggestIngredientsForDish", "applySuggestionsToAllDishes",
+      "generateMonthlyData", "deleteMonthlyData"
     ];
 
     if (allowedMethods.indexOf(methodName) === -1) {
