@@ -3,6 +3,10 @@
  * Main entry point and API route dispatcher for King's Grill Quality Logs Web App.
  */
 
+function runAuth() {
+  getAppInitData();
+}
+
 function doGet(e) {
   // Automatically initialize sheets and defaults on first load
   try {
