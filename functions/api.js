@@ -29,7 +29,7 @@ export async function onRequest(context) {
     const bodyText = await request.text();
     
     // Target Google Apps Script Web App URL (Authorized Public Deployment)
-    let gasUrl = "https://script.google.com/macros/s/AKfycbxU77KoD0WFm5IBZQfuQiGpiBUdFxpt0D4CwnJI8_rt9Wi4a9oIRRq9ZKqLUl6maJHNsA/exec";
+    let gasUrl = "https://script.google.com/macros/s/AKfycbw544vgAcYk8ufc6AVKtej_kXIXWqmUOFr7K8i_H1C_JmPpBOQ4UqAWzlBtcm2qQfOCUg/exec";
     
     // Fetch with manual redirect mode to preserve POST method across 302 redirects
     let response = await fetch(gasUrl, {
@@ -46,13 +46,9 @@ export async function onRequest(context) {
       const redirectUrl = response.headers.get("location");
       if (!redirectUrl) break;
       
-      // Perform the next hop as a POST request to keep the payload intact
+      // Google's redirect macro echo server only accepts GET requests to return cached output
       response = await fetch(redirectUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8"
-        },
-        body: bodyText,
+        method: "GET",
         redirect: "manual"
       });
       redirectCount++;
