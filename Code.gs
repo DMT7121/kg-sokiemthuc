@@ -10,6 +10,7 @@ function doGet(e) {
     MenuService.initDefaults();
     IngredientService.initDefaults();
     KitchenStaffService.initDefaults();
+    IngredientService.applySuggestionsToAll();
   } catch(err) {
     Logger.log("Initialization error: " + err.toString());
   }
@@ -55,6 +56,15 @@ function runApi(serviceFn, args) {
 
 function getAppInitData() {
   return runApi(function() {
+    try {
+      ConfigService.initDefaults();
+      MenuService.initDefaults();
+      IngredientService.initDefaults();
+      KitchenStaffService.initDefaults();
+      IngredientService.applySuggestionsToAll();
+    } catch(err) {
+      Logger.log("getAppInitData initialization error: " + err.toString());
+    }
     return {
       configs: ConfigService.getConfigMap(),
       menu: MenuService.getMenu(),

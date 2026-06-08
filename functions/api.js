@@ -61,6 +61,24 @@ export async function onRequest(context) {
     // Read the final response body
     const responseData = await response.text();
     
+    // Detect if Google Apps Script returned HTML (login page or error page)
+    const trimmedData = responseData.trim();
+    if (trimmedData.startsWith("<!DOCTYPE") || trimmedData.startsWith("<html") || trimmedData.toLowerCase().includes("google accounts") || trimmedData.toLowerCase().includes("page not found")) {
+      const errorMsg = {
+        success: false,
+        error: "Yêu cầu cấp quyền: Google Apps Script Web App chưa được chia sẻ công khai hoặc chưa được ủy quyền tài khoản. Vui lòng vào Google Sheet -> Tiện ích mở rộng -> Apps Script, chạy thử một hàm để đồng ý cấp quyền, và chọn Deploy -> New Deployment -> Chọn Web App -> Configure 'Execute as: Me' và 'Who has access: Anyone'."
+      };
+      return new Response(JSON.stringify(errorMsg), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type"
+        }
+      });
+    }
+    
     // Return to client with appropriate CORS headers
     return new Response(responseData, {
       status: 200,

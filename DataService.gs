@@ -36,6 +36,31 @@ var DataService = (function() {
   }
 
   /**
+   * Generates a random time pair between 17:00 and 19:00, exactly 1 hour apart.
+   * Format: "17g00", "17g15", "17g30", "17g45", "18g00" for finish time,
+   * and "18g00", "18g15", "18g30", "18g45", "19g00" for start eating time.
+   */
+  function generateRandomTimePair() {
+    var minutesOptions = [0, 15, 30, 45];
+    var minutes = minutesOptions[Math.floor(Math.random() * minutesOptions.length)];
+    
+    // Hour can be 17 or 18. If 18, minutes must be 0 to keep the eating time <= 19g00.
+    var hour = Math.random() < 0.75 ? 17 : 18;
+    if (hour === 18) {
+      minutes = 0;
+    }
+    
+    var minStr = minutes === 0 ? "00" : String(minutes);
+    var finishTime = hour + "g" + minStr;
+    var startTime = (hour + 1) + "g" + minStr;
+    
+    return {
+      finish: finishTime,
+      start: startTime
+    };
+  }
+
+  /**
    * Generates weight details for a list of ingredients.
    * Format: "Thịt bò (120g); Trứng muối (75g)"
    */
@@ -175,6 +200,8 @@ var DataService = (function() {
         // Generate ingredient text with randomized weights
         var ingText = generateIngredientWeights(dish["Tên món"], dish.ID, mappingsMap);
 
+        var times = generateRandomTimePair();
+
         var row = {
           "ID": id,
           "Tháng": monthStr,
@@ -184,8 +211,8 @@ var DataService = (function() {
           "Ca bữa ăn": defaultSession,
           "Tên món ăn": dish["Tên món"],
           "Số suất": servings,
-          "Thời gian chia món xong": defaultFinish,
-          "Thời gian bắt đầu ăn": defaultStart,
+          "Thời gian chia món xong": times.finish,
+          "Thời gian bắt đầu ăn": times.start,
           "Dụng cụ bảo quản": defaultStorage,
           "Cảm quan đạt": defaultResult === "Đạt" ? "✓" : "",
           "Cảm quan không đạt": defaultResult !== "Đạt" ? "✓" : "",
@@ -351,6 +378,8 @@ var DataService = (function() {
 
       var ingText = generateIngredientWeights(dish["Tên món"], dish.ID, mappingsMap);
 
+      var times = generateRandomTimePair();
+
       dayRows.push({
         "ID": id,
         "Tháng": monthStr,
@@ -360,8 +389,8 @@ var DataService = (function() {
         "Ca bữa ăn": defaultSession,
         "Tên món ăn": dish["Tên món"],
         "Số suất": servings,
-        "Thời gian chia món xong": defaultFinish,
-        "Thời gian bắt đầu ăn": defaultStart,
+        "Thời gian chia món xong": times.finish,
+        "Thời gian bắt đầu ăn": times.start,
         "Dụng cụ bảo quản": defaultStorage,
         "Cảm quan đạt": defaultResult === "Đạt" ? "✓" : "",
         "Cảm quan không đạt": defaultResult !== "Đạt" ? "✓" : "",
