@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>King's Grill - Sổ Kiểm Thực Ba Bước</title>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <?!= include('Styles'); ?>
+</head>
+<body>
+  <!-- Global Loading Spinner Overlay -->
+  <div id="loading-overlay" class="loading-overlay hidden">
+    <div class="spinner-container">
+      <div class="spinner"></div>
+      <div id="loading-message" class="loading-message">Đang tải dữ liệu...</div>
+    </div>
+  </div>
+
+  <!-- Global Toast Notification -->
+  <div id="toast" class="toast hidden"></div>
+
+  <div class="app">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="crown">♛</div>
+        <div class="name">KING'S GRILL</div>
+        <div class="sub">CHẤT LƯỢNG & AN TOÀN</div>
+      </div>
+
+      <nav class="nav">
+        <a href="#dashboard" class="nav-link active" data-target="dashboard">▣ Dashboard</a>
+        <a href="#create" class="nav-link" data-target="create">✎ Biên tập dữ liệu</a>
+        <a href="#preview" class="nav-link" data-target="preview">👁 Preview / In PDF</a>
+        <a href="#config" class="nav-link" data-target="config">⚙ Cấu hình chung</a>
+        <a href="#menu" class="nav-link" data-target="menu">☷ Thực đơn món</a>
+        <a href="#ingredients" class="nav-link" data-target="ingredients">◇ Nguyên liệu chính</a>
+        <a href="#staff" class="nav-link" data-target="staff">👨‍🍳 Nhân viên bếp</a>
+        <a href="#history" class="nav-link" data-target="history">▣ Lịch sử PDF</a>
+      </nav>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main">
+      <header class="hero-title">
+        <h1>SỔ KIỂM THỰC BA BƯỚC – KING'S GRILL</h1>
+        <p>Quản lý thực đơn – Tạo dữ liệu tự động – Xuất PDF A4 ngang chuẩn chỉnh</p>
+      </header>
+
+      <!-- View Wrapper -->
+      <div id="views-container">
+        
+        <!-- DASHBOARD VIEW -->
+        <section id="view-dashboard" class="view-section active">
+          <div class="section-header">Dashboard Tổng Quan</div>
+          
+          <div class="top-filter">
+            <div class="month-selector-wrapper">
+              <label for="dash-month">Tháng làm việc:</label>
+              <input type="month" id="dash-month" class="month-picker-input" />
+            </div>
+            <div class="action-row">
+              <button id="btn-sync-init" class="btn light">↻ Làm mới</button>
+            </div>
+          </div>
+
+          <div class="cards">
+            <div class="card stat">
+              <div class="label">Tháng làm việc</div>
+              <div id="stat-month" class="value">--</div>
+            </div>
+            <div class="card stat green">
+              <div class="label">Tổng số ngày</div>
+              <div id="stat-days" class="value">--</div>
+            </div>
+            <div class="card stat blue">
+              <div class="label">Số món ăn / Tháng</div>
+              <div id="stat-total-dishes" class="value">--</div>
+            </div>
+            <div class="card stat orange">
+              <div class="label">Tổng số suất ăn</div>
+              <div id="stat-total-servings" class="value">--</div>
+            </div>
+            <div class="card stat red">
+              <div class="label">Đã lưu PDF</div>
+              <div id="stat-pdf-count" class="value">--</div>
+            </div>
+          </div>
+
+          <div class="grid" style="margin-top: 18px;">
+            <div class="span-7 flex-col gap-12">
+              <div class="card flex-grow flex-col">
+                <h3 class="panel-title">Hành Động Nhanh</h3>
+                <div class="quick-actions-grid">
+                  <button id="btn-quick-generate" class="btn bg-blue">
+                    <span class="btn-icon">✎</span> Tạo tự động dữ liệu tháng
+                  </button>
+                  <button id="btn-quick-preview-before" class="btn bg-green">
+                    <span class="btn-icon">👁</span> Xem Sổ Trước Khi Ăn
+                  </button>
+                  <button id="btn-quick-preview-proc" class="btn bg-orange">
+                    <span class="btn-icon">👁</span> Xem Sổ Khi Chế Biến
+                  </button>
+                  <button id="btn-quick-export-both" class="btn bg-red">
+                    <span class="btn-icon">📄</span> Xuất PDF Cả 2 Sổ (Drive)
+                  </button>
+                </div>
+              </div>
+
+              <!-- Bar Chart Placeholder (Using CSS Flexbox bars for beautiful in-app layout) -->
+              <div class="card flex-grow">
+                <h3 class="panel-title">Phân Bố Số Món Ăn Theo Thứ Trong Tuần</h3>
+                <div class="bar-chart-container">
+                  <div class="bar-chart" id="dash-bar-chart">
+                    <!-- Dynamic Bars will render here -->
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="span-5 flex-col">
+              <div class="card flex-grow">
+                <h3 class="panel-title">Top Món Ăn Xuất Hiện Nhiều Nhất</h3>
+                <div class="mini-list" id="dash-top-dishes">
+                  <!-- Top dishes will render here -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- DATA EDITOR VIEW -->
+        <section id="view-create" class="view-section">
+          <div class="section-header">Biên Tập & Tạo Dữ Liệu</div>
+          
+          <div class="editor-header-actions">
+            <div class="day-picker-group">
+              <label for="edit-date">Chọn Ngày:</label>
+              <select id="edit-date" class="date-select-input">
+                <option value="">-- Chưa có dữ liệu --</option>
+              </select>
+            </div>
+            
+            <div class="editor-buttons">
+              <button id="btn-generate-month" class="btn">🎲 Tạo mới cả tháng</button>
+              <button id="btn-regenerate-day" class="btn orange">↻ Random lại ngày này</button>
+              <button id="btn-add-edit-row" class="btn green">+ Thêm món ăn</button>
+              <button id="btn-save-edit-data" class="btn blue">💾 Lưu thay đổi</button>
+            </div>
+          </div>
+
+          <div class="card table-container" style="margin-top: 12px;">
+            <table class="data-table" id="editor-table">
+              <thead>
+                <tr>
+                  <th style="width: 3%">TT</th>
+                  <th style="width: 22%">Tên món ăn</th>
+                  <th style="width: 8%">Số suất</th>
+                  <th style="width: 10%">Ca bữa ăn</th>
+                  <th style="width: 9%">Chia xong</th>
+                  <th style="width: 9%">Ăn lúc</th>
+                  <th style="width: 18%">Dụng cụ bảo quản</th>
+                  <th style="width: 8%">Cảm quan</th>
+                  <th style="width: 13%">Hành động</th>
+                </tr>
+              </thead>
+              <tbody id="editor-table-body">
+                <tr>
+                  <td colspan="9" class="center muted">Hãy tạo dữ liệu tháng hoặc chọn ngày để xem.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- PREVIEW & PRINT VIEW -->
+        <section id="view-preview" class="view-section">
+          <div class="section-header">Preview Sổ & Xuất PDF</div>
+          
+          <div class="preview-filters-card card">
+            <div class="form-grid">
+              <div class="field span-3">
+                <label>Bản Sổ</label>
+                <select id="preview-book-type">
+                  <option value="before_eat">Sổ kiểm thực 1: Trước khi ăn</option>
+                  <option value="processing">Sổ kiểm thực 2: Khi chế biến</option>
+                </select>
+              </div>
+              <div class="field span-3">
+                <label>Chọn Ngày Để Preview</label>
+                <select id="preview-date-select">
+                  <option value="">-- Chọn ngày --</option>
+                </select>
+              </div>
+              <div class="field span-6 flex-row items-end justify-end gap-8">
+                <button id="btn-print-preview" class="btn green">🖨 In trực tiếp trang này</button>
+                <button id="btn-export-day-pdf" class="btn orange">📄 Xuất PDF ngày này</button>
+                <button id="btn-export-month-pdf" class="btn red">📘 Xuất PDF cả tháng</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="preview-workspace" style="margin-top: 15px;">
+            <!-- Simulation Page Wrapper -->
+            <div class="paper-preview-container">
+              <iframe id="preview-iframe" class="preview-iframe" src="about:blank"></iframe>
+            </div>
+          </div>
+        </section>
+
+        <!-- SYSTEM CONFIG VIEW -->
+        <section id="view-config" class="view-section">
+          <div class="section-header">Cấu Hình Hệ Thống</div>
+          
+          <div class="grid">
+            <div class="span-6 flex-col">
+              <div class="card flex-grow">
+                <h3 class="panel-title">⚙ Cấu hình chung</h3>
+                <div class="form-grid">
+                  <div class="field span-12">
+                    <label>Tên nhà hàng</label>
+                    <input type="text" id="cfg-restaurant-name" />
+                  </div>
+                  <div class="field span-6">
+                    <label>Ca/bữa mặc định</label>
+                    <input type="text" id="cfg-default-session" />
+                  </div>
+                  <div class="field span-6">
+                    <label>Khu vực chế biến</label>
+                    <input type="text" id="cfg-default-area" />
+                  </div>
+                  <div class="field span-6">
+                    <label>Thời gian chia món xong</label>
+                    <input type="text" id="cfg-default-finish" placeholder="ví dụ: 17:00" />
+                  </div>
+                  <div class="field span-6">
+                    <label>Thời gian bắt đầu ăn</label>
+                    <input type="text" id="cfg-default-start" placeholder="ví dụ: 18:00" />
+                  </div>
+                  <div class="field span-6">
+                    <label>Kết quả cảm quan</label>
+                    <select id="cfg-default-result">
+                      <option value="Đạt">Đạt</option>
+                      <option value="Không đạt">Không đạt</option>
+                    </select>
+                  </div>
+                  <div class="field span-6">
+                    <label>Trang thiết bị bảo hộ</label>
+                    <input type="text" id="cfg-default-equipment" />
+                  </div>
+                  <div class="field span-12">
+                    <label>Thư mục Drive lưu PDF (Folder ID)</label>
+                    <input type="text" id="cfg-output-folder" placeholder="Để trống hệ thống sẽ tự động tạo" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="span-6 flex-col">
+              <div class="card flex-grow">
+                <h3 class="panel-title">🎲 Quy tắc tạo dữ liệu ngẫu nhiên (Random)</h3>
+                <div class="form-grid">
+                  <!-- Weekday Config -->
+                  <div class="field span-12">
+                    <strong style="font-size: 12px; color: var(--kg-blue); display: block; border-bottom: 1px solid var(--kg-border); padding-bottom: 4px; margin-bottom: 4px;">Ngày thường (Thứ 2 - Thứ 5):</strong>
+                  </div>
+                  <div class="field span-6">
+                    <label>Số món tối thiểu / Ngày</label>
+                    <input type="number" id="cfg-weekday-min-items" min="1" max="30" />
+                  </div>
+                  <div class="field span-6">
+                    <label>Số món tối đa / Ngày</label>
+                    <input type="number" id="cfg-weekday-max-items" min="1" max="30" />
+                  </div>
+                  <div class="field span-6">
+                    <label>Số suất tối thiểu / Món</label>
+                    <input type="number" id="cfg-weekday-min-serving" min="1" />
+                  </div>
+                  <div class="field span-6">
+                    <label>Số suất tối đa / Món</label>
+                    <input type="number" id="cfg-weekday-max-serving" min="1" />
+                  </div>
+
+                  <!-- Weekend Config -->
+                  <div class="field span-12" style="margin-top: 10px;">
+                    <strong style="font-size: 12px; color: var(--kg-orange); display: block; border-bottom: 1px solid var(--kg-border); padding-bottom: 4px; margin-bottom: 4px;">Cuối tuần (Thứ 6 - Chủ nhật):</strong>
+                  </div>
+                  <div class="field span-6">
+                    <label>Số món tối thiểu / Ngày</label>
+                    <input type="number" id="cfg-weekend-min-items" min="1" max="30" />
+                  </div>
+                  <div class="field span-6">
+                    <label>Số món tối đa / Ngày</label>
+                    <input type="number" id="cfg-weekend-max-items" min="1" max="30" />
+                  </div>
+                  <div class="field span-6">
+                    <label>Số suất tối thiểu / Món</label>
+                    <input type="number" id="cfg-weekend-min-serving" min="1" />
+                  </div>
+                  <div class="field span-6">
+                    <label>Số suất tối đa / Món</label>
+                    <input type="number" id="cfg-weekend-max-serving" min="1" />
+                  </div>
+                  <div class="field span-12">
+                    <label>Số suất đột biến (Tần suất thấp) - Mặc định 30</label>
+                    <input type="number" id="cfg-low-prob-serving" min="1" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top: 15px; text-align: right;">
+            <button id="btn-save-config" class="btn green" style="min-width: 150px;">💾 Lưu cấu hình</button>
+          </div>
+        </section>
+
+        <!-- MENU VIEW -->
+        <section id="view-menu" class="view-section">
+          <div class="section-header">Quản lý thực đơn (Menu)</div>
+          
+          <div class="editor-header-actions">
+            <div class="search-box">
+              <input type="text" id="menu-search" placeholder="Tìm kiếm món ăn..." />
+            </div>
+            <div class="editor-buttons">
+              <button id="btn-add-menu-item" class="btn">+ Thêm món</button>
+              <button id="btn-import-menu-modal" class="btn green">Import danh sách</button>
+            </div>
+          </div>
+
+          <div class="card table-container" style="margin-top: 10px;">
+            <table class="data-table" id="menu-table">
+              <thead>
+                <tr>
+                  <th style="width: 5%">STT</th>
+                  <th style="width: 12%">ID</th>
+                  <th style="width: 45%">Tên món</th>
+                  <th style="width: 18%">Nhóm món</th>
+                  <th style="width: 10%">Trạng thái</th>
+                  <th style="width: 10%">Hành động</th>
+                </tr>
+              </thead>
+              <tbody id="menu-table-body">
+                <!-- Renders dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- INGREDIENTS VIEW -->
+        <section id="view-ingredients" class="view-section">
+          <div class="section-header">Nguyên liệu chính theo món</div>
+          
+          <div class="grid">
+            <div class="span-4 flex-col">
+              <div class="card flex-grow">
+                <h3 class="panel-title">Chọn món ăn cấu hình</h3>
+                <div class="field">
+                  <label for="ing-dish-select">Món ăn:</label>
+                  <select id="ing-dish-select" style="min-height: 38px;">
+                    <option value="">-- Chọn món ăn --</option>
+                  </select>
+                </div>
+                
+                <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 8px;">
+                  <button id="btn-ing-suggest" class="btn light" style="color: var(--kg-green); text-align: left; justify-content: flex-start;">
+                    💡 Gợi ý nguyên liệu từ tên món
+                  </button>
+                  <button id="btn-ing-apply-all" class="btn light" style="color: var(--kg-blue); text-align: left; justify-content: flex-start;">
+                    ⚡ Tự động áp dụng cho các món chưa có
+                  </button>
+                </div>
+
+                <div class="ing-suggest-preview card" id="ing-suggest-preview-box" style="margin-top: 15px; display: none;">
+                  <strong>Gợi ý từ hệ thống:</strong>
+                  <div id="ing-suggest-list" style="margin-top: 8px; font-size: 12px; line-height: 1.6; color: var(--kg-green); font-weight: 600;"></div>
+                  <button id="btn-ing-use-suggestion" class="btn green" style="width: 100%; margin-top: 10px; min-height: 30px; font-size: 11px;">
+                    ✓ Dùng gợi ý này
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="span-8 flex-col">
+              <div class="card flex-grow">
+                <div class="panel-header-row">
+                  <h3 class="panel-title" id="ing-panel-title">Chi tiết nguyên liệu</h3>
+                  <button id="btn-ing-add-row" class="btn light" style="min-height: 28px; padding: 2px 8px; font-size: 11px;">+ Thêm nguyên liệu</button>
+                </div>
+
+                <table class="data-table" id="ing-table" style="margin-top: 10px;">
+                  <thead>
+                    <tr>
+                      <th style="width: 45%">Nguyên liệu chính</th>
+                      <th style="width: 15%">Đơn vị</th>
+                      <th style="width: 15%">Min</th>
+                      <th style="width: 15%">Max</th>
+                      <th style="width: 10%">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ing-table-body">
+                    <tr>
+                      <td colspan="5" class="center muted">Chọn một món ăn bên trái để cấu hình nguyên liệu.</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div style="margin-top: 15px; text-align: right;">
+                  <button id="btn-ing-save" class="btn green" style="min-width: 120px;">💾 Lưu nguyên liệu</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- KITCHEN STAFF VIEW -->
+        <section id="view-staff" class="view-section">
+          <div class="section-header">Nhân viên bếp</div>
+          
+          <div class="editor-header-actions">
+            <div class="search-box">
+              <input type="text" id="staff-search" placeholder="Tìm kiếm nhân viên..." />
+            </div>
+            <div class="editor-buttons">
+              <button id="btn-add-staff" class="btn green">+ Thêm nhân viên</button>
+            </div>
+          </div>
+
+          <div class="card table-container" style="margin-top: 10px;">
+            <table class="data-table" id="staff-table">
+              <thead>
+                <tr>
+                  <th style="width: 8%">STT</th>
+                  <th style="width: 18%">Mã nhân viên</th>
+                  <th style="width: 44%">Tên nhân viên</th>
+                  <th style="width: 15%">Trạng thái</th>
+                  <th style="width: 15%">Hành động</th>
+                </tr>
+              </thead>
+              <tbody id="staff-table-body">
+                <!-- Renders dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- PDF HISTORY VIEW -->
+        <section id="view-history" class="view-section">
+          <div class="section-header">Lịch sử xuất PDF</div>
+          
+          <div class="card table-container" style="margin-top: 10px;">
+            <table class="data-table" id="history-table">
+              <thead>
+                <tr>
+                  <th style="width: 18%">Thời gian tạo</th>
+                  <th style="width: 10%">Tháng</th>
+                  <th style="width: 18%">Loại sổ</th>
+                  <th style="width: 34%">Tên file</th>
+                  <th style="width: 20%">Hành động</th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body">
+                <tr>
+                  <td colspan="5" class="center muted">Chưa có lịch sử xuất file.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- MODAL: ADD/EDIT DISH -->
+  <div id="modal-dish" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-dish-title">Thêm món ăn mới</h3>
+        <span class="modal-close" id="btn-close-modal-dish">&times;</span>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <input type="hidden" id="dish-form-id" />
+          <div class="field span-12">
+            <label>Tên món ăn</label>
+            <input type="text" id="dish-form-name" required />
+          </div>
+          <div class="field span-6">
+            <label>Nhóm món</label>
+            <input type="text" id="dish-form-group" required />
+          </div>
+          <div class="field span-6">
+            <label>Trạng thái</label>
+            <select id="dish-form-status">
+              <option value="Active">Hoạt động (Active)</option>
+              <option value="Inactive">Tạm khóa (Inactive)</option>
+            </select>
+          </div>
+          <div class="field span-12">
+            <label>Ghi chú</label>
+            <input type="text" id="dish-form-note" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn light" id="btn-cancel-modal-dish">Hủy</button>
+        <button class="btn green" id="btn-submit-modal-dish">Lưu món</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: BULK IMPORT DISHES -->
+  <div id="modal-import" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Import danh sách món ăn</h3>
+        <span class="modal-close" id="btn-close-modal-import">&times;</span>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 11px; margin-bottom: 8px;" class="muted">
+          Nhập mỗi món một dòng. Định dạng: <strong>Tên món, Nhóm món</strong>. Nếu không điền Nhóm món, hệ thống tự động điền nhóm là "Khác".<br/>
+          <em>*Các món có từ khóa cấm (Tôm hùm, Cá bống mú, Cua, Ghẹ) sẽ tự động bị loại bỏ.</em>
+        </p>
+        <textarea id="import-menu-text" placeholder="Ví dụ:&#13;Bò áp chảo sốt tiêu đen, Món xào&#13;Salad gà áp chảo, Salad" style="height: 200px; font-family: monospace;"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn light" id="btn-cancel-modal-import">Hủy</button>
+        <button class="btn green" id="btn-submit-modal-import">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD/EDIT STAFF -->
+  <div id="modal-staff" class="modal hidden">
+    <div class="modal-content" style="max-width: 450px;">
+      <div class="modal-header">
+        <h3 id="modal-staff-title">Thêm nhân viên</h3>
+        <span class="modal-close" id="btn-close-modal-staff">&times;</span>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <input type="hidden" id="staff-form-id" />
+          <div class="field span-12">
+            <label>Tên nhân viên</label>
+            <input type="text" id="staff-form-name" required />
+          </div>
+          <div class="field span-12">
+            <label>Trạng thái</label>
+            <select id="staff-form-status">
+              <option value="Active">Hoạt động (Active)</option>
+              <option value="Inactive">Nghỉ việc/Khóa (Inactive)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn light" id="btn-cancel-modal-staff">Hủy</button>
+        <button class="btn green" id="btn-submit-modal-staff">Lưu nhân viên</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD DAILY DISH -->
+  <div id="modal-daily" class="modal hidden">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3>Thêm món ăn vào ngày</h3>
+        <span class="modal-close" id="btn-close-modal-daily">&times;</span>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="field span-12">
+            <label>Chọn món ăn</label>
+            <select id="daily-form-dish-select" required>
+              <option value="">-- Chọn món --</option>
+            </select>
+          </div>
+          <div class="field span-6">
+            <label>Số suất ăn</label>
+            <input type="number" id="daily-form-servings" min="1" value="20" required />
+          </div>
+          <div class="field span-6">
+            <label>Bữa ăn / Ca</label>
+            <input type="text" id="daily-form-session" value="Tối" required />
+          </div>
+          <div class="field span-6">
+            <label>Chia món xong</label>
+            <input type="text" id="daily-form-finish" value="17:00" required />
+          </div>
+          <div class="field span-6">
+            <label>Bắt đầu ăn lúc</label>
+            <input type="text" id="daily-form-start" value="18:00" required />
+          </div>
+          <div class="field span-12">
+            <label>Nhân viên chế biến</label>
+            <select id="daily-form-chef-select" required>
+              <option value="">-- Chọn nhân viên --</option>
+            </select>
+          </div>
+          <div class="field span-12">
+            <label>Dụng cụ bảo quản</label>
+            <input type="text" id="daily-form-storage" value="Dụng cụ inox, đậy kín" required />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn light" id="btn-cancel-modal-daily">Hủy</button>
+        <button class="btn green" id="btn-submit-modal-daily">Thêm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIRM GENERATION -->
+  <div id="modal-confirm" class="modal hidden">
+    <div class="modal-content" style="max-width: 400px; text-align: center;">
+      <div class="modal-header">
+        <h3>Xác nhận tạo dữ liệu</h3>
+        <span class="modal-close" id="btn-close-modal-confirm">&times;</span>
+      </div>
+      <div class="modal-body" style="padding: 10px 0 20px 0;">
+        <p>Hệ thống sẽ <strong>ghi đè toàn bộ</strong> dữ liệu hiện tại của tháng đã chọn. Bạn có chắc chắn muốn tạo mới?</p>
+        <div id="confirm-month-year" style="font-size: 18px; font-weight: 800; color: var(--kg-red); margin-top: 10px;">Tháng --/----</div>
+      </div>
+      <div class="modal-footer" style="justify-content: center; gap: 10px;">
+        <button class="btn light" id="btn-cancel-modal-confirm" style="min-width: 100px;">Hủy bỏ</button>
+        <button class="btn red" id="btn-submit-modal-confirm" style="min-width: 100px;">Đồng ý tạo</button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

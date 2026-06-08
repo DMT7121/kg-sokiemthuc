@@ -1,0 +1,1261 @@
+<script>
+  // ==========================================
+  // Client-Side Application State
+  // ==========================================
+  var state = {
+    configs: {},
+    menu: [],
+    staff: [],
+    ingredients: [],
+    pdfHistory: [],
+    currentMonthData: [],
+    selectedMonth: "", // Format: "MM/YYYY"
+    selectedDate: "",  // Format: "DD/MM/YYYY"
+    selectedDayIndex: 0,
+    editingDishId: null,
+    editingStaffId: null
+  };
+
+  // ==========================================
+  // Initialization & View Router
+  // ==========================================
+  document.addEventListener("DOMContentLoaded", function() {
+    initApp();
+  });
+
+  function initApp() {
+    setupNavigation();
+    setupEventListeners();
+    
+    // Set default month in picker to current month/year
+    var today = new Date();
+    var yyyy = today.getFullYear();
+    var mm = String(today.getMonth() + 1).padStart(2, '0');
+    var inputMonth = document.getElementById("dash-month");
+    inputMonth.value = yyyy + "-" + mm;
+    state.selectedMonth = mm + "/" + yyyy;
+
+    // Load initial data
+    fetchInitData();
+  }
+
+  function setupNavigation() {
+    var links = document.querySelectorAll(".nav-link");
+    links.forEach(function(link) {
+      link.addEventListener("click", function(e) {
+        e.preventDefault();
+        
+        var target = this.getAttribute("data-target");
+        
+        // Update Active Nav Link
+        links.forEach(function(l) { l.classList.remove("active"); });
+        this.classList.add("active");
+        
+        // Show Target Section
+        var sections = document.querySelectorAll(".view-section");
+        sections.forEach(function(s) { s.classList.remove("active"); });
+        
+        var activeSection = document.getElementById("view-" + target);
+        if (activeSection) {
+          activeSection.classList.add("active");
+        }
+        
+        // Route-specific actions
+        onViewChanged(target);
+      });
+    });
+  }
+
+  function onViewChanged(view) {
+    if (view === "dashboard") {
+      updateDashboardStats();
+      renderDashboardCharts();
+    } else if (view === "create") {
+      loadMonthDataForEditor();
+    } else if (view === "preview") {
+      loadMonthDataForPreview();
+    } else if (view === "menu") {
+      renderMenuTable();
+    } else if (view === "ingredients") {
+      populateIngredientDishSelect();
+    } else if (view === "staff") {
+      renderStaffTable();
+    } else if (view === "history") {
+      loadPdfHistory();
+    }
+  }
+
+  // ==========================================
+  // Server Call Wrappers (with Loading Overlays)
+  // ==========================================
+  function showLoading(msg) {
+    document.getElementById("loading-message").innerText = msg || "Đang xử lý...";
+    document.getElementById("loading-overlay").classList.remove("hidden");
+  }
+
+  function hideLoading() {
+    document.getElementById("loading-overlay").classList.add("hidden");
+  }
+
+  function showToast(message, type) {
+    var toast = document.getElementById("toast");
+    toast.innerText = message;
+    toast.className = "toast show " + (type || "success");
+    setTimeout(function() {
+      toast.classList.remove("show");
+    }, 3500);
+  }
+
+  function callBackend(methodName, args, successCallback, errorCallback) {
+    showLoading();
+    google.script.run
+      .withSuccessHandler(function(response) {
+        hideLoading();
+        if (response && response.success) {
+          if (successCallback) successCallback(response.data);
+        } else {
+          var errorMsg = (response && response.error) ? response.error : "Lỗi hệ thống.";
+          showToast(errorMsg, "error");
+          if (errorCallback) errorCallback(response);
+        }
+      })
+      .withFailureHandler(function(err) {
+        hideLoading();
+        showToast("Lỗi kết nối máy chủ: " + err.toString(), "error");
+        if (errorCallback) errorCallback(err);
+      })[methodName].apply(google.script.run, args || []);
+  }
+
+  // ==========================================
+  // API Fetch Implementations
+  // ==========================================
+  function fetchInitData() {
+    callBackend("getAppInitData", [], function(data) {
+      state.configs = data.configs || {};
+      state.menu = data.menu || [];
+      state.staff = data.staff || [];
+      state.ingredients = data.ingredients || [];
+      state.pdfHistory = data.pdfHistory || [];
+      
+      populateConfigForm();
+      updateDashboardStats();
+      renderDashboardCharts();
+    });
+  }
+
+  function loadMonthDataForEditor() {
+    var parts = state.selectedMonth.split("/");
+    var m = parseInt(parts[0], 10);
+    var y = parseInt(parts[1], 10);
+    
+    callBackend("getMonthlyData", [m, y], function(rows) {
+      state.currentMonthData = rows;
+      populateDateSelector("edit-date", rows);
+      onDateSelectionChanged();
+    });
+  }
+
+  function loadMonthDataForPreview() {
+    var parts = state.selectedMonth.split("/");
+    var m = parseInt(parts[0], 10);
+    var y = parseInt(parts[1], 10);
+    
+    callBackend("getMonthlyData", [m, y], function(rows) {
+      state.currentMonthData = rows;
+      populateDateSelector("preview-date-select", rows);
+      updatePreviewIframe();
+    });
+  }
+
+  function loadPdfHistory() {
+    callBackend("getPdfHistory", [], function(history) {
+      state.pdfHistory = history;
+      renderHistoryTable();
+    });
+  }
+
+  // ==========================================
+  // CONFIG VIEW CONTROLLER
+  // ==========================================
+  function populateConfigForm() {
+    var c = state.configs;
+    document.getElementById("cfg-restaurant-name").value = c.RESTAURANT_NAME || "";
+    document.getElementById("cfg-default-session").value = c.DEFAULT_MEAL_SESSION || "";
+    document.getElementById("cfg-default-area").value = c.DEFAULT_KITCHEN_AREA || "";
+    document.getElementById("cfg-default-finish").value = c.DEFAULT_FINISH_TIME || "";
+    document.getElementById("cfg-default-start").value = c.DEFAULT_START_TIME || "";
+    document.getElementById("cfg-default-result").value = c.DEFAULT_RESULT || "Đạt";
+    document.getElementById("cfg-default-equipment").value = c.DEFAULT_KITCHEN_EQUIPMENT || "";
+    document.getElementById("cfg-output-folder").value = c.OUTPUT_FOLDER_ID || "";
+
+    document.getElementById("cfg-weekday-min-items").value = c.WEEKDAY_MIN_ITEMS || "";
+    document.getElementById("cfg-weekday-max-items").value = c.WEEKDAY_MAX_ITEMS || "";
+    document.getElementById("cfg-weekday-min-serving").value = c.WEEKDAY_MIN_SERVING || "";
+    document.getElementById("cfg-weekday-max-serving").value = c.WEEKDAY_MAX_SERVING || "";
+
+    document.getElementById("cfg-weekend-min-items").value = c.WEEKEND_MIN_ITEMS || "";
+    document.getElementById("cfg-weekend-max-items").value = c.WEEKEND_MAX_ITEMS || "";
+    document.getElementById("cfg-weekend-min-serving").value = c.WEEKEND_MIN_SERVING || "";
+    document.getElementById("cfg-weekend-max-serving").value = c.WEEKEND_MAX_SERVING || "";
+    document.getElementById("cfg-low-prob-serving").value = c.LOW_PROBABILITY_MAX_SERVING || "";
+  }
+
+  function saveConfigForm() {
+    var configMap = {
+      RESTAURANT_NAME: document.getElementById("cfg-restaurant-name").value.trim(),
+      DEFAULT_MEAL_SESSION: document.getElementById("cfg-default-session").value.trim(),
+      DEFAULT_KITCHEN_AREA: document.getElementById("cfg-default-area").value.trim(),
+      DEFAULT_FINISH_TIME: document.getElementById("cfg-default-finish").value.trim(),
+      DEFAULT_START_TIME: document.getElementById("cfg-default-start").value.trim(),
+      DEFAULT_RESULT: document.getElementById("cfg-default-result").value,
+      DEFAULT_KITCHEN_EQUIPMENT: document.getElementById("cfg-default-equipment").value.trim(),
+      OUTPUT_FOLDER_ID: document.getElementById("cfg-output-folder").value.trim(),
+
+      WEEKDAY_MIN_ITEMS: document.getElementById("cfg-weekday-min-items").value,
+      WEEKDAY_MAX_ITEMS: document.getElementById("cfg-weekday-max-items").value,
+      WEEKDAY_MIN_SERVING: document.getElementById("cfg-weekday-min-serving").value,
+      WEEKDAY_MAX_SERVING: document.getElementById("cfg-weekday-max-serving").value,
+
+      WEEKEND_MIN_ITEMS: document.getElementById("cfg-weekend-min-items").value,
+      WEEKEND_MAX_ITEMS: document.getElementById("cfg-weekend-max-items").value,
+      WEEKEND_MIN_SERVING: document.getElementById("cfg-weekend-min-serving").value,
+      WEEKEND_MAX_SERVING: document.getElementById("cfg-weekend-max-serving").value,
+      LOW_PROBABILITY_MAX_SERVING: document.getElementById("cfg-low-prob-serving").value
+    };
+
+    callBackend("saveConfig", [configMap], function(savedConfigs) {
+      state.configs = savedConfigs;
+      showToast("Đã lưu cấu hình hệ thống thành công!");
+    });
+  }
+
+  // ==========================================
+  // DASHBOARD VIEW CONTROLLER
+  // ==========================================
+  function updateDashboardStats() {
+    document.getElementById("stat-month").innerText = state.selectedMonth;
+    
+    // Process stats from state.currentMonthData
+    var daysSet = new Set();
+    var servings = 0;
+    state.currentMonthData.forEach(function(row) {
+      daysSet.add(row["Ngày"]);
+      servings += parseInt(row["Số suất"], 10) || 0;
+    });
+
+    document.getElementById("stat-days").innerText = daysSet.size || "0";
+    document.getElementById("stat-total-dishes").innerText = state.currentMonthData.length || "0";
+    document.getElementById("stat-total-servings").innerText = servings.toLocaleString("vi-VN") || "0";
+    
+    // PDF stats
+    var currentMonthPdfs = state.pdfHistory.filter(function(p) {
+      return p["Tháng"] === state.selectedMonth;
+    });
+    document.getElementById("stat-pdf-count").innerText = currentMonthPdfs.length || "0";
+  }
+
+  function renderDashboardCharts() {
+    // 1. Group items by Day of Week
+    var dowCounts = { "Thứ hai": 0, "Thứ ba": 0, "Thứ tư": 0, "Thứ năm": 0, "Thứ sáu": 0, "Thứ bảy": 0, "Chủ nhật": 0 };
+    var dowDays = { "Thứ hai": new Set(), "Thứ ba": new Set(), "Thứ tư": new Set(), "Thứ năm": new Set(), "Thứ sáu": new Set(), "Thứ bảy": new Set(), "Chủ nhật": new Set() };
+    
+    state.currentMonthData.forEach(function(row) {
+      var dow = row["Thứ"];
+      var date = row["Ngày"];
+      if (dowCounts[dow] !== undefined) {
+        dowCounts[dow]++;
+        dowDays[dow].add(date);
+      }
+    });
+
+    var chartBox = document.getElementById("dash-bar-chart");
+    chartBox.innerHTML = "";
+    
+    var maxAverage = 1;
+    var chartData = Object.keys(dowCounts).map(function(dow) {
+      var totalDishes = dowCounts[dow];
+      var numDays = dowDays[dow].size || 1;
+      var avg = parseFloat((totalDishes / numDays).toFixed(1));
+      if (avg > maxAverage) maxAverage = avg;
+      return { label: dow, val: avg };
+    });
+
+    chartData.forEach(function(item) {
+      var percent = (item.val / maxAverage) * 100;
+      var groupDiv = document.createElement("div");
+      groupDiv.className = "bar-group";
+      groupDiv.innerHTML = [
+        '  <div class="bar-val">' + item.val + '</div>',
+        '  <div class="bar-inner" style="height: ' + Math.max(percent, 5) + '%"></div>',
+        '  <div class="bar-lbl">' + item.label.substring(4) + '</div>'
+      ].join('\n');
+      chartBox.appendChild(groupDiv);
+    });
+
+    // 2. Render Top Dishes list
+    var dishCounts = {};
+    state.currentMonthData.forEach(function(row) {
+      var name = row["Tên món ăn"];
+      dishCounts[name] = (dishCounts[name] || 0) + 1;
+    });
+
+    var sortedDishes = Object.keys(dishCounts).map(function(name) {
+      return { name: name, count: dishCounts[name] };
+    }).sort(function(a, b) {
+      return b.count - a.count;
+    });
+
+    var topDishesList = document.getElementById("dash-top-dishes");
+    topDishesList.innerHTML = "";
+    
+    var topLimit = Math.min(sortedDishes.length, 6);
+    if (topLimit === 0) {
+      topDishesList.innerHTML = '<div class="center muted" style="padding: 20px 0;">Chưa có dữ liệu tháng này.</div>';
+      return;
+    }
+
+    for (var i = 0; i < topLimit; i++) {
+      var item = sortedDishes[i];
+      var itemDiv = document.createElement("div");
+      itemDiv.className = "mini-item";
+      itemDiv.innerHTML = [
+        '  <span class="dish-name">' + (i + 1) + '. ' + item.name + '</span>',
+        '  <span class="dish-count">' + item.count + ' lần</span>'
+      ].join('\n');
+      topDishesList.appendChild(itemDiv);
+    }
+  }
+
+  // ==========================================
+  // DATA EDITOR VIEW CONTROLLER
+  // ==========================================
+  function populateDateSelector(selectorId, rows) {
+    var select = document.getElementById(selectorId);
+    select.innerHTML = "";
+    
+    var days = new Set();
+    rows.forEach(function(r) {
+      days.add(r["Ngày"]);
+    });
+
+    // Sort days chronologically
+    var sortedDays = Array.from(days).sort(function(a, b) {
+      var ap = a.split("/");
+      var bp = b.split("/");
+      return new Date(ap[2], ap[1]-1, ap[0]) - new Date(bp[2], bp[1]-1, bp[0]);
+    });
+
+    if (sortedDays.length === 0) {
+      select.innerHTML = '<option value="">-- Chưa có dữ liệu --</option>';
+      return;
+    }
+
+    sortedDays.forEach(function(day) {
+      var option = document.createElement("option");
+      option.value = day;
+      option.innerText = day;
+      select.appendChild(option);
+    });
+
+    if (state.selectedDate && sortedDays.indexOf(state.selectedDate) !== -1) {
+      select.value = state.selectedDate;
+    } else {
+      state.selectedDate = sortedDays[0];
+      select.value = sortedDays[0];
+    }
+  }
+
+  function onDateSelectionChanged() {
+    var select = document.getElementById("edit-date");
+    state.selectedDate = select.value;
+    renderEditorTable();
+  }
+
+  function renderEditorTable() {
+    var tbody = document.getElementById("editor-table-body");
+    tbody.innerHTML = "";
+
+    if (!state.selectedDate) {
+      tbody.innerHTML = '<tr><td colspan="9" class="center muted">Hãy chọn ngày hoặc tạo mới dữ liệu tháng.</td></tr>';
+      return;
+    }
+
+    // Filter rows for selected day
+    var dayRows = state.currentMonthData.filter(function(r) {
+      return r["Ngày"] === state.selectedDate;
+    });
+
+    if (dayRows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" class="center muted">Không có món ăn nào trong ngày này.</td></tr>';
+      return;
+    }
+
+    dayRows.forEach(function(row, idx) {
+      var tr = document.createElement("tr");
+      tr.innerHTML = [
+        '  <td class="center">' + (idx + 1) + '</td>',
+        '  <td><strong>' + (row["Tên món ăn"] || "") + '</strong><br/><small class="muted" style="font-size: 9px;">NL: ' + (row["Nguyên liệu chính"] || "Chưa có") + '</small></td>',
+        '  <td><input type="number" class="table-input" value="' + row["Số suất"] + '" onchange="updateRowState(\'' + row.ID + '\', \'Số suất\', this.value)" style="width: 70px; min-height: 28px; padding: 2px 6px; text-align: center;" /></td>',
+        '  <td><input type="text" class="table-input" value="' + row["Ca bữa ăn"] + '" onchange="updateRowState(\'' + row.ID + '\', \'Ca bữa ăn\', this.value)" style="width: 80px; min-height: 28px; padding: 2px 6px; text-align: center;" /></td>',
+        '  <td><input type="text" class="table-input" value="' + row["Thời gian chia món xong"] + '" onchange="updateRowState(\'' + row.ID + '\', \'Thời gian chia món xong\', this.value)" style="width: 70px; min-height: 28px; padding: 2px 6px; text-align: center;" /></td>',
+        '  <td><input type="text" class="table-input" value="' + row["Thời gian bắt đầu ăn"] + '" onchange="updateRowState(\'' + row.ID + '\', \'Thời gian bắt đầu ăn\', this.value)" style="width: 70px; min-height: 28px; padding: 2px 6px; text-align: center;" /></td>',
+        '  <td><input type="text" class="table-input" value="' + row["Dụng cụ bảo quản"] + '" onchange="updateRowState(\'' + row.ID + '\', \'Dụng cụ bảo quản\', this.value)" style="width: 140px; min-height: 28px; padding: 2px 6px;" /></td>',
+        '  <td class="center">',
+        '    <select onchange="updateRowCảmQuan(\'' + row.ID + '\', this.value)" style="width: 75px; min-height: 28px; padding: 2px 6px;">',
+        '      <option value="Đạt" ' + (row["Cảm quan đạt"] === "✓" ? "selected" : "") + '>Đạt</option>',
+        '      <option value="K.Đạt" ' + (row["Cảm quan không đạt"] === "✓" ? "selected" : "") + '>K.Đạt</option>',
+        '    </select>',
+        '  </td>',
+        '  <td class="center">',
+        '    <button class="act-btn del" onclick="deleteDailyRow(\'' + row.ID + '\')">Xóa</button>',
+        '  </td>'
+      ].join('\n');
+      tbody.appendChild(tr);
+    });
+  }
+
+  window.updateRowState = function(rowId, field, val) {
+    state.currentMonthData.forEach(function(row) {
+      if (row.ID === rowId) {
+        row[field] = val;
+      }
+    });
+  };
+
+  window.updateRowCảmQuan = function(rowId, val) {
+    state.currentMonthData.forEach(function(row) {
+      if (row.ID === rowId) {
+        if (val === "Đạt") {
+          row["Cảm quan đạt"] = "✓";
+          row["Cảm quan không đạt"] = "";
+        } else {
+          row["Cảm quan đạt"] = "";
+          row["Cảm quan không đạt"] = "✓";
+        }
+      }
+    });
+  };
+
+  window.deleteDailyRow = function(rowId) {
+    // Filter out rowId
+    state.currentMonthData = state.currentMonthData.filter(function(r) {
+      return r.ID !== rowId;
+    });
+    
+    // Re-index remaining rows for the day
+    var dayRows = state.currentMonthData.filter(function(r) {
+      return r["Ngày"] === state.selectedDate;
+    });
+    
+    dayRows.forEach(function(r, idx) {
+      r["TT"] = idx + 1;
+    });
+
+    renderEditorTable();
+  };
+
+  function triggerRegenerateDay() {
+    if (!state.selectedDate) return;
+    if (confirm("Bạn có chắc chắn muốn random lại dữ liệu cho ngày " + state.selectedDate + "? Mọi sửa đổi trước đó của ngày này sẽ bị mất.")) {
+      callBackend("regenerateDayData", [state.selectedDate], function(dayRows) {
+        // Remove old rows of that date from state.currentMonthData
+        state.currentMonthData = state.currentMonthData.filter(function(r) {
+          return r["Ngày"] !== state.selectedDate;
+        }).concat(dayRows);
+        
+        // Sort
+        state.currentMonthData.sort(function(a, b) {
+          return a.ID.localeCompare(b.ID);
+        });
+
+        renderEditorTable();
+        showToast("Đã random lại dữ liệu cho ngày " + state.selectedDate + "!");
+      });
+    }
+  }
+
+  function saveEditorChanges() {
+    var parts = state.selectedMonth.split("/");
+    var m = parseInt(parts[0], 10);
+    var y = parseInt(parts[1], 10);
+
+    callBackend("saveMonthlyData", [m, y, state.currentMonthData], function(savedRows) {
+      state.currentMonthData = savedRows;
+      showToast("Đã lưu toàn bộ thay đổi thành công!");
+      updateDashboardStats();
+    });
+  }
+
+  // ==========================================
+  // PREVIEW VIEW CONTROLLER
+  // ==========================================
+  function updatePreviewIframe() {
+    var iframe = document.getElementById("preview-iframe");
+    var dateSelect = document.getElementById("preview-date-select");
+    var bookSelect = document.getElementById("preview-book-type");
+    
+    var date = dateSelect.value;
+    var bookType = bookSelect.value;
+    
+    if (!date) {
+      iframe.srcdoc = '<div style="font-family: Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100%; color: #999; font-weight: bold;">Không có dữ liệu để xem trước</div>';
+      return;
+    }
+
+    var parts = state.selectedMonth.split("/");
+    var m = parseInt(parts[0], 10);
+    var y = parseInt(parts[1], 10);
+
+    callBackend("getPreviewData", [m, y, bookType, date], function(htmlContent) {
+      var doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.open();
+      doc.write(htmlContent);
+      doc.close();
+    });
+  }
+
+  function printPreviewIframe() {
+    var iframe = document.getElementById("preview-iframe");
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+  }
+
+  function exportDayPdf() {
+    // Exporting just the day PDF
+    showToast("Tính năng xuất PDF theo ngày đang sử dụng HTML xuất. Đang gửi yêu cầu tạo...", "success");
+    // Since Google sheet stores monthly pdfs, we will trigger the month PDF creation.
+    exportMonthPdf();
+  }
+
+  function exportMonthPdf() {
+    var bookSelect = document.getElementById("preview-book-type");
+    var bookType = bookSelect.value;
+    var apiName = bookType === "before_eat" ? "createBeforeEatPdf" : "createProcessingPdf";
+    
+    var parts = state.selectedMonth.split("/");
+    var m = parseInt(parts[0], 10);
+    var y = parseInt(parts[1], 10);
+
+    showToast("Đang tạo và lưu PDF trên Drive. Vui lòng chờ 1-2 phút...", "success");
+    
+    callBackend(apiName, [m, y], function(fileUrl) {
+      showToast("Đã xuất PDF thành công! Mở tab Lịch sử PDF để xem.", "success");
+      loadPdfHistory();
+      window.open(fileUrl, "_blank");
+    });
+  }
+
+  function exportBothPdfs() {
+    var parts = state.selectedMonth.split("/");
+    var m = parseInt(parts[0], 10);
+    var y = parseInt(parts[1], 10);
+
+    showToast("Đang tạo và xuất đồng thời 2 bản sổ PDF. Quá trình này mất khoảng 2-3 phút...", "success");
+    
+    callBackend("createBothPdfs", [m, y], function(urls) {
+      showToast("Đã xuất thành công cả 2 bản sổ PDF!", "success");
+      loadPdfHistory();
+      window.open(urls.beforeEatUrl, "_blank");
+      window.open(urls.processingUrl, "_blank");
+    });
+  }
+
+  // ==========================================
+  // MENU MANAGEMENT CONTROLLER
+  // ==========================================
+  function renderMenuTable() {
+    var tbody = document.getElementById("menu-table-body");
+    tbody.innerHTML = "";
+
+    var keyword = document.getElementById("menu-search").value.toLowerCase().trim();
+    var filtered = state.menu.filter(function(item) {
+      return item["Tên món"].toLowerCase().indexOf(keyword) !== -1 ||
+             item["Nhóm món"].toLowerCase().indexOf(keyword) !== -1 ||
+             item.ID.toLowerCase().indexOf(keyword) !== -1;
+    });
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="center muted">Không tìm thấy món ăn nào.</td></tr>';
+      return;
+    }
+
+    filtered.forEach(function(item, idx) {
+      var tr = document.createElement("tr");
+      var badgeClass = item["Trạng thái"] === "Active" ? "active" : "inactive";
+      
+      tr.innerHTML = [
+        '  <td class="center">' + (idx + 1) + '</td>',
+        '  <td class="center font-semibold">' + item.ID + '</td>',
+        '  <td style="font-weight: 600;">' + item["Tên món"] + '</td>',
+        '  <td>' + (item["Nhóm món"] || "Khác") + '</td>',
+        '  <td class="center"><span class="badge ' + badgeClass + '">' + item["Trạng thái"] + '</span></td>',
+        '  <td class="center">',
+        '    <button class="act-btn edit" onclick="editMenuItem(\'' + item.ID + '\')">Sửa</button>',
+        '    <button class="act-btn del" onclick="deleteMenuItem(\'' + item.ID + '\')">Xóa</button>',
+        '  </td>'
+      ].join('\n');
+      tbody.appendChild(tr);
+    });
+  }
+
+  window.editMenuItem = function(id) {
+    var dish = state.menu.filter(function(m) { return m.ID === id; })[0];
+    if (!dish) return;
+
+    state.editingDishId = id;
+    document.getElementById("modal-dish-title").innerText = "Chỉnh sửa món ăn";
+    document.getElementById("dish-form-id").value = dish.ID;
+    document.getElementById("dish-form-name").value = dish["Tên món"];
+    document.getElementById("dish-form-group").value = dish["Nhóm món"] || "Khác";
+    document.getElementById("dish-form-status").value = dish["Trạng thái"];
+    document.getElementById("dish-form-note").value = dish["Ghi chú"] || "";
+
+    openModal("modal-dish");
+  };
+
+  window.deleteMenuItem = function(id) {
+    if (confirm("Bạn có chắc chắn muốn xóa món ăn này khỏi thực đơn?")) {
+      var newList = state.menu.filter(function(m) { return m.ID !== id; });
+      callBackend("saveMenu", [newList], function(savedMenu) {
+        state.menu = savedMenu;
+        renderMenuTable();
+        showToast("Đã xóa món ăn thành công!");
+      });
+    }
+  };
+
+  function submitDishForm() {
+    var name = document.getElementById("dish-form-name").value.trim();
+    var group = document.getElementById("dish-form-group").value.trim();
+    var status = document.getElementById("dish-form-status").value;
+    var note = document.getElementById("dish-form-note").value.trim();
+
+    if (!name) {
+      showToast("Vui lòng điền tên món ăn", "error");
+      return;
+    }
+
+    var newList = state.menu.slice();
+
+    if (state.editingDishId) {
+      // Edit mode
+      newList.forEach(function(item) {
+        if (item.ID === state.editingDishId) {
+          item["Tên món"] = name;
+          item["Nhóm món"] = group;
+          item["Trạng thái"] = status;
+          item["Ghi chú"] = note;
+        }
+      });
+    } else {
+      // Add mode
+      newList.push({
+        ID: "", // Auto generated in backend
+        "Tên món": name,
+        "Nhóm món": group,
+        "Trạng thái": status,
+        "Ghi chú": note
+      });
+    }
+
+    callBackend("saveMenu", [newList], function(savedMenu) {
+      state.menu = savedMenu;
+      closeModal("modal-dish");
+      renderMenuTable();
+      showToast("Đã lưu món ăn thành công!");
+    });
+  }
+
+  function submitImportForm() {
+    var text = document.getElementById("import-menu-text").value.trim();
+    if (!text) {
+      showToast("Vui lòng điền nội dung danh sách món ăn", "error");
+      return;
+    }
+
+    callBackend("importMenu", [text], function(savedMenu) {
+      state.menu = savedMenu;
+      closeModal("modal-import");
+      renderMenuTable();
+      showToast("Đã import danh sách món thành công! Các món chứa thành phần cấm đã tự động bị lọc.");
+    });
+  }
+
+  // ==========================================
+  // INGREDIENTS VIEW CONTROLLER
+  // ==========================================
+  function populateIngredientDishSelect() {
+    var select = document.getElementById("ing-dish-select");
+    select.innerHTML = '<option value="">-- Chọn món ăn --</option>';
+
+    // Load active menu items
+    state.menu.forEach(function(item) {
+      if (item["Trạng thái"] === "Active") {
+        var opt = document.createElement("option");
+        opt.value = item.ID;
+        opt.innerText = item["Tên món"] + " (" + item.ID + ")";
+        select.appendChild(opt);
+      }
+    });
+
+    document.getElementById("ing-suggest-preview-box").style.display = "none";
+    document.getElementById("ing-table-body").innerHTML = '<tr><td colspan="5" class="center muted">Chọn một món ăn bên trái để cấu hình nguyên liệu.</td></tr>';
+  }
+
+  function onIngredientDishSelected() {
+    var dishId = document.getElementById("ing-dish-select").value;
+    var tbody = document.getElementById("ing-table-body");
+    
+    document.getElementById("ing-suggest-preview-box").style.display = "none";
+    tbody.innerHTML = "";
+
+    if (!dishId) {
+      tbody.innerHTML = '<tr><td colspan="5" class="center muted">Chọn một món ăn bên trái để cấu hình nguyên liệu.</td></tr>';
+      return;
+    }
+
+    var dish = state.menu.filter(function(m) { return m.ID === dishId; })[0];
+    document.getElementById("ing-panel-title").innerText = "Chi tiết nguyên liệu: " + dish["Tên món"];
+
+    // Load ingredient row if exists
+    var mapping = state.ingredients.filter(function(ing) {
+      return ing["Menu ID"] === dishId;
+    })[0];
+
+    if (mapping && mapping["Nguyên liệu chính"]) {
+      var ingredientsList = mapping["Nguyên liệu chính"].split(";").map(function(s) { return s.trim(); });
+      var min = mapping.Min || 50;
+      var max = mapping.Max || 200;
+      var unit = mapping["Đơn vị random"] || "gram";
+
+      ingredientsList.forEach(function(ingName) {
+        if (ingName) {
+          addIngredientRowToTable(ingName, unit, min, max);
+        }
+      });
+    } else {
+      tbody.innerHTML = '<tr><td colspan="5" class="center muted">Chưa có nguyên liệu chính cấu hình. Nhấp Gợi ý nguyên liệu hoặc Thêm dòng mới.</td></tr>';
+    }
+  }
+
+  function addIngredientRowToTable(name, unit, min, max) {
+    var tbody = document.getElementById("ing-table-body");
+    
+    // Clear the center muted row if it exists
+    if (tbody.rows.length === 1 && tbody.rows[0].cells.length === 1) {
+      tbody.innerHTML = "";
+    }
+
+    var tr = document.createElement("tr");
+    tr.className = "ing-row";
+    tr.innerHTML = [
+      '  <td><input type="text" class="ing-name-input" value="' + (name || "") + '" style="min-height: 28px; padding: 2px 6px;" /></td>',
+      '  <td>',
+      '    <select class="ing-unit-input" style="min-height: 28px; padding: 2px 6px;">',
+      '      <option value="gram" ' + (unit === "gram" ? "selected" : "") + '>gram</option>',
+      '      <option value="cái" ' + (unit === "cái" ? "selected" : "") + '>cái</option>',
+      '      <option value="con" ' + (unit === "con" ? "selected" : "") + '>con</option>',
+      '      <option value="ml" ' + (unit === "ml" ? "selected" : "") + '>ml</option>',
+      '    </select>',
+      '  </td>',
+      '  <td><input type="number" class="ing-min-input" value="' + (min || 50) + '" style="min-height: 28px; padding: 2px 6px; text-align: center;" /></td>',
+      '  <td><input type="number" class="ing-max-input" value="' + (max || 200) + '" style="min-height: 28px; padding: 2px 6px; text-align: center;" /></td>',
+      '  <td class="center"><button class="act-btn del" onclick="this.closest(\'tr\').remove(); checkIngTableEmpty();">Xóa</button></td>'
+    ].join('\n');
+    
+    tbody.appendChild(tr);
+  }
+
+  window.checkIngTableEmpty = function() {
+    var tbody = document.getElementById("ing-table-body");
+    if (tbody.rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="center muted">Chưa có nguyên liệu chính cấu hình. Nhấp Gợi ý nguyên liệu hoặc Thêm dòng mới.</td></tr>';
+    }
+  };
+
+  function suggestIngredients() {
+    var dishId = document.getElementById("ing-dish-select").value;
+    if (!dishId) {
+      showToast("Vui lòng chọn món ăn cần gợi ý", "error");
+      return;
+    }
+
+    var dish = state.menu.filter(function(m) { return m.ID === dishId; })[0];
+    
+    callBackend("suggestIngredientsForDish", [dish["Tên món"]], function(suggestions) {
+      var box = document.getElementById("ing-suggest-preview-box");
+      var listDiv = document.getElementById("ing-suggest-list");
+      
+      listDiv.innerText = suggestions.join("; ");
+      box.style.display = "block";
+    });
+  }
+
+  function useSuggestions() {
+    var sText = document.getElementById("ing-suggest-list").innerText;
+    var list = sText.split(";").map(function(s) { return s.trim(); });
+    
+    var tbody = document.getElementById("ing-table-body");
+    tbody.innerHTML = "";
+
+    list.forEach(function(ing) {
+      if (ing) {
+        addIngredientRowToTable(ing, "gram", 50, 200);
+      }
+    });
+
+    document.getElementById("ing-suggest-preview-box").style.display = "none";
+  }
+
+  function saveIngredientsMapping() {
+    var dishId = document.getElementById("ing-dish-select").value;
+    if (!dishId) {
+      showToast("Vui lòng chọn món ăn trước", "error");
+      return;
+    }
+
+    var dish = state.menu.filter(function(m) { return m.ID === dishId; })[0];
+    
+    var rows = document.querySelectorAll("#ing-table-body .ing-row");
+    var ingNames = [];
+    var min = 50;
+    var max = 200;
+    var unit = "gram";
+
+    rows.forEach(function(row, idx) {
+      var name = row.querySelector(".ing-name-input").value.trim();
+      if (name) ingNames.push(name);
+      if (idx === 0) {
+        min = parseInt(row.querySelector(".ing-min-input").value, 10) || 50;
+        max = parseInt(row.querySelector(".ing-max-input").value, 10) || 200;
+        unit = row.querySelector(".ing-unit-input").value;
+      }
+    });
+
+    var existingMappings = state.ingredients.slice();
+    var foundIndex = -1;
+    existingMappings.forEach(function(mapping, idx) {
+      if (mapping["Menu ID"] === dishId) foundIndex = idx;
+    });
+
+    var newMapping = {
+      "Menu ID": dishId,
+      "Tên món": dish["Tên món"],
+      "Nguyên liệu chính": ingNames.join("; "),
+      "Đơn vị random": unit,
+      "Min": min,
+      "Max": max
+    };
+
+    if (foundIndex !== -1) {
+      existingMappings[foundIndex] = newMapping;
+    } else {
+      existingMappings.push(newMapping);
+    }
+
+    callBackend("saveIngredients", [existingMappings], function(savedMappings) {
+      state.ingredients = savedMappings;
+      showToast("Đã lưu nguyên liệu cho món " + dish["Tên món"] + "!");
+    });
+  }
+
+  function applySuggestionsToAll() {
+    if (confirm("Hệ thống sẽ quét toàn bộ thực đơn và tự động gợi ý nguyên liệu cho các món chưa được cấu hình. Bạn đồng ý?")) {
+      callBackend("applySuggestionsToAllDishes", [], function(savedMappings) {
+        state.ingredients = savedMappings;
+        showToast("Đã áp dụng gợi ý cho toàn bộ thực đơn!");
+        
+        // Reload details if selected
+        onIngredientDishSelected();
+      });
+    }
+  }
+
+  // ==========================================
+  // STAFF VIEW CONTROLLER
+  // ==========================================
+  function renderStaffTable() {
+    var tbody = document.getElementById("staff-table-body");
+    tbody.innerHTML = "";
+
+    var keyword = document.getElementById("staff-search").value.toLowerCase().trim();
+    var filtered = state.staff.filter(function(s) {
+      return s["Tên nhân viên"].toLowerCase().indexOf(keyword) !== -1 ||
+             s.ID.toLowerCase().indexOf(keyword) !== -1;
+    });
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="center muted">Không tìm thấy nhân viên bếp nào.</td></tr>';
+      return;
+    }
+
+    filtered.forEach(function(s, idx) {
+      var tr = document.createElement("tr");
+      var badgeClass = s["Trạng thái"] === "Active" ? "active" : "inactive";
+      
+      tr.innerHTML = [
+        '  <td class="center">' + (idx + 1) + '</td>',
+        '  <td class="center font-semibold">' + s.ID + '</td>',
+        '  <td style="font-weight: 600;">' + s["Tên nhân viên"] + '</td>',
+        '  <td class="center"><span class="badge ' + badgeClass + '">' + s["Trạng thái"] + '</span></td>',
+        '  <td class="center">',
+        '    <button class="act-btn edit" onclick="editStaffItem(\'' + s.ID + '\')">Sửa</button>',
+        '    <button class="act-btn del" onclick="deleteStaffItem(\'' + s.ID + '\')">Xóa</button>',
+        '  </td>'
+      ].join('\n');
+      tbody.appendChild(tr);
+    });
+  }
+
+  window.editStaffItem = function(id) {
+    var s = state.staff.filter(function(item) { return item.ID === id; })[0];
+    if (!s) return;
+
+    state.editingStaffId = id;
+    document.getElementById("modal-staff-title").innerText = "Chỉnh sửa nhân viên";
+    document.getElementById("staff-form-id").value = s.ID;
+    document.getElementById("staff-form-name").value = s["Tên nhân viên"];
+    document.getElementById("staff-form-status").value = s["Trạng thái"];
+
+    openModal("modal-staff");
+  };
+
+  window.deleteStaffItem = function(id) {
+    if (confirm("Bạn có chắc chắn muốn xóa nhân viên bếp này?")) {
+      var newList = state.staff.filter(function(item) { return item.ID !== id; });
+      callBackend("saveKitchenStaff", [newList], function(savedStaff) {
+        state.staff = savedStaff;
+        renderStaffTable();
+        showToast("Đã xóa nhân viên bếp!");
+      });
+    }
+  };
+
+  function submitStaffForm() {
+    var name = document.getElementById("staff-form-name").value.trim();
+    var status = document.getElementById("staff-form-status").value;
+
+    if (!name) {
+      showToast("Vui lòng điền tên nhân viên", "error");
+      return;
+    }
+
+    var newList = state.staff.slice();
+
+    if (state.editingStaffId) {
+      newList.forEach(function(item) {
+        if (item.ID === state.editingStaffId) {
+          item["Tên nhân viên"] = name;
+          item["Trạng thái"] = status;
+        }
+      });
+    } else {
+      newList.push({
+        ID: "", // Auto generated in backend
+        "Tên nhân viên": name,
+        "Trạng thái": status
+      });
+    }
+
+    callBackend("saveKitchenStaff", [newList], function(savedStaff) {
+      state.staff = savedStaff;
+      closeModal("modal-staff");
+      renderStaffTable();
+      showToast("Đã lưu nhân viên bếp thành công!");
+    });
+  }
+
+  // ==========================================
+  // HISTORY VIEW CONTROLLER
+  // ==========================================
+  function renderHistoryTable() {
+    var tbody = document.getElementById("history-table-body");
+    tbody.innerHTML = "";
+
+    if (state.pdfHistory.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="center muted">Chưa có lịch sử xuất file.</td></tr>';
+      return;
+    }
+
+    state.pdfHistory.forEach(function(item) {
+      var tr = document.createElement("tr");
+      tr.innerHTML = [
+        '  <td>' + item["Thời gian tạo"] + '</td>',
+        '  <td class="center font-semibold">' + item["Tháng"] + '</td>',
+        '  <td><strong>' + item["Loại sổ"] + '</strong></td>',
+        '  <td class="muted">' + item["Tên file"] + '</td>',
+        '  <td class="center"><a href="' + item["Link PDF"] + '" target="_blank" class="btn light" style="min-height: 28px; padding: 2px 10px; font-size: 11px; text-decoration: none;">🔍 Mở Drive</a></td>'
+      ].join('\n');
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ==========================================
+  // GENERATION CONTROLLERS
+  // ==========================================
+  function confirmMonthlyGeneration() {
+    document.getElementById("confirm-month-year").innerText = "Tháng " + state.selectedMonth;
+    openModal("modal-confirm");
+  }
+
+  function executeMonthlyGeneration() {
+    closeModal("modal-confirm");
+    
+    var parts = state.selectedMonth.split("/");
+    var m = parseInt(parts[0], 10);
+    var y = parseInt(parts[1], 10);
+
+    showToast("Đang khởi tạo thuật toán random và điền dữ liệu tháng. Vui lòng chờ...", "success");
+    
+    callBackend("generateMonthlyData", [m, y], function(result) {
+      showToast("Đã tạo thành công dữ liệu cho tháng " + state.selectedMonth + " với " + result.totalRows + " lượt kiểm thực!");
+      
+      // Auto load editor
+      var navLink = document.querySelector('.nav-link[data-target="create"]');
+      if (navLink) navLink.click();
+    });
+  }
+
+  // ==========================================
+  // ROW ADD EDIT FLOW (DAILY)
+  // ==========================================
+  function openAddDailyRowModal() {
+    var select = document.getElementById("daily-form-dish-select");
+    select.innerHTML = '<option value="">-- Chọn món --</option>';
+
+    // Load active dishes
+    state.menu.forEach(function(dish) {
+      if (dish["Trạng thái"] === "Active") {
+        var opt = document.createElement("option");
+        opt.value = dish["Tên món"];
+        opt.innerText = dish["Tên món"];
+        select.appendChild(opt);
+      }
+    });
+
+    var chefSelect = document.getElementById("daily-form-chef-select");
+    chefSelect.innerHTML = '<option value="">-- Chọn nhân viên --</option>';
+    
+    // Load active staff
+    state.staff.forEach(function(s) {
+      if (s["Trạng thái"] === "Active") {
+        var opt = document.createElement("option");
+        opt.value = s["Tên nhân viên"];
+        opt.innerText = s["Tên nhân viên"];
+        chefSelect.appendChild(opt);
+      }
+    });
+
+    // Preset defaults from configs
+    var c = state.configs;
+    document.getElementById("daily-form-session").value = c.DEFAULT_MEAL_SESSION || "Tối";
+    document.getElementById("daily-form-finish").value = c.DEFAULT_FINISH_TIME || "17:00";
+    document.getElementById("daily-form-start").value = c.DEFAULT_START_TIME || "18:00";
+    document.getElementById("daily-form-storage").value = c.DEFAULT_KITCHEN_EQUIPMENT ? "Dụng cụ inox, đậy kín" : "Dụng cụ inox";
+    
+    openModal("modal-daily");
+  }
+
+  function submitDailyRowForm() {
+    var name = document.getElementById("daily-form-dish-select").value;
+    var servings = parseInt(document.getElementById("daily-form-servings").value, 10) || 20;
+    var session = document.getElementById("daily-form-session").value.trim();
+    var finish = document.getElementById("daily-form-finish").value.trim();
+    var start = document.getElementById("daily-form-start").value.trim();
+    var chef = document.getElementById("daily-form-chef-select").value;
+    var storage = document.getElementById("daily-form-storage").value.trim();
+
+    if (!name || !chef) {
+      showToast("Vui lòng điền đầy đủ món ăn và người chế biến", "error");
+      return;
+    }
+
+    var parts = state.selectedDate.split("/");
+    var dateIdPrefix = parts[2] + parts[1] + parts[0];
+
+    // Find the next index for the day
+    var dayRows = state.currentMonthData.filter(function(r) {
+      return r["Ngày"] === state.selectedDate;
+    });
+
+    var tt = dayRows.length + 1;
+    var id = dateIdPrefix + "_" + String(tt).padStart(2, '0');
+
+    // Get ingredients suggestions
+    callBackend("suggestIngredientsForDish", [name], function(suggestions) {
+      var ingText = suggestions.map(function(s) {
+        var weight = Math.floor(Math.random() * (150 - 50 + 1)) + 50; // Random weights default
+        return s + " (" + weight + "g)";
+      }).join("; ");
+
+      var row = {
+        "ID": id,
+        "Tháng": state.selectedMonth,
+        "Ngày": state.selectedDate,
+        "Thứ": dayRows[0] ? dayRows[0]["Thứ"] : "Thứ hai", // Fallback
+        "TT": tt,
+        "Ca bữa ăn": session,
+        "Tên món ăn": name,
+        "Số suất": servings,
+        "Thời gian chia món xong": finish,
+        "Thời gian bắt đầu ăn": start,
+        "Dụng cụ bảo quản": storage,
+        "Cảm quan đạt": "✓",
+        "Cảm quan không đạt": "",
+        "Ghi chú": "",
+        "Nguyên liệu chính": ingText,
+        "Nhân viên chế biến": chef,
+        "Trang thiết bị": state.configs.DEFAULT_KITCHEN_EQUIPMENT || "Mũ bếp; găng tay",
+        "Khu vực": state.configs.DEFAULT_KITCHEN_AREA || "Bếp chính"
+      };
+
+      state.currentMonthData.push(row);
+      
+      // Sort
+      state.currentMonthData.sort(function(a, b) {
+        return a.ID.localeCompare(b.ID);
+      });
+
+      closeModal("modal-daily");
+      renderEditorTable();
+      showToast("Đã thêm món ăn thành công!");
+    });
+  }
+
+  // ==========================================
+  // EVENT LISTENERS & MODAL UTILS
+  // ==========================================
+  function setupEventListeners() {
+    // 1. Month Picker dashboard change
+    document.getElementById("dash-month").addEventListener("change", function() {
+      var val = this.value;
+      if (val) {
+        var parts = val.split("-");
+        state.selectedMonth = parts[1] + "/" + parts[0];
+        
+        // Auto refresh monthly data state
+        var partsState = state.selectedMonth.split("/");
+        var m = parseInt(partsState[0], 10);
+        var y = parseInt(partsState[1], 10);
+        
+        callBackend("getMonthlyData", [m, y], function(rows) {
+          state.currentMonthData = rows;
+          updateDashboardStats();
+          renderDashboardCharts();
+        });
+      }
+    });
+
+    document.getElementById("btn-sync-init").addEventListener("click", function() {
+      fetchInitData();
+    });
+
+    // 2. Dashboard Quick Actions
+    document.getElementById("btn-quick-generate").addEventListener("click", confirmMonthlyGeneration);
+    document.getElementById("btn-quick-preview-before").addEventListener("click", function() {
+      document.getElementById("preview-book-type").value = "before_eat";
+      var navLink = document.querySelector('.nav-link[data-target="preview"]');
+      if (navLink) navLink.click();
+    });
+    document.getElementById("btn-quick-preview-proc").addEventListener("click", function() {
+      document.getElementById("preview-book-type").value = "processing";
+      var navLink = document.querySelector('.nav-link[data-target="preview"]');
+      if (navLink) navLink.click();
+    });
+    document.getElementById("btn-quick-export-both").addEventListener("click", exportBothPdfs);
+
+    // 3. Editor View Actions
+    document.getElementById("edit-date").addEventListener("change", onDateSelectionChanged);
+    document.getElementById("btn-generate-month").addEventListener("click", confirmMonthlyGeneration);
+    document.getElementById("btn-regenerate-day").addEventListener("click", triggerRegenerateDay);
+    document.getElementById("btn-add-edit-row").addEventListener("click", openAddDailyRowModal);
+    document.getElementById("btn-save-edit-data").addEventListener("click", saveEditorChanges);
+
+    // 4. Preview View Actions
+    document.getElementById("preview-date-select").addEventListener("change", updatePreviewIframe);
+    document.getElementById("preview-book-type").addEventListener("change", updatePreviewIframe);
+    document.getElementById("btn-print-preview").addEventListener("click", printPreviewIframe);
+    document.getElementById("btn-export-day-pdf").addEventListener("click", exportDayPdf);
+    document.getElementById("btn-export-month-pdf").addEventListener("click", exportMonthPdf);
+
+    // 5. Config View Actions
+    document.getElementById("btn-save-config").addEventListener("click", saveConfigForm);
+
+    // 6. Menu View Actions
+    document.getElementById("menu-search").addEventListener("input", renderMenuTable);
+    document.getElementById("btn-add-menu-item").addEventListener("click", function() {
+      state.editingDishId = null;
+      document.getElementById("modal-dish-title").innerText = "Thêm món ăn mới";
+      document.getElementById("dish-form-id").value = "";
+      document.getElementById("dish-form-name").value = "";
+      document.getElementById("dish-form-group").value = "Khác";
+      document.getElementById("dish-form-status").value = "Active";
+      document.getElementById("dish-form-note").value = "";
+      openModal("modal-dish");
+    });
+    document.getElementById("btn-import-menu-modal").addEventListener("click", function() {
+      document.getElementById("import-menu-text").value = "";
+      openModal("modal-import");
+    });
+
+    // 7. Ingredients View Actions
+    document.getElementById("ing-dish-select").addEventListener("change", onIngredientDishSelected);
+    document.getElementById("btn-ing-suggest").addEventListener("click", suggestIngredients);
+    document.getElementById("btn-ing-use-suggestion").addEventListener("click", useSuggestions);
+    document.getElementById("btn-ing-add-row").addEventListener("click", function() {
+      addIngredientRowToTable("", "gram", 50, 200);
+    });
+    document.getElementById("btn-ing-save").addEventListener("click", saveIngredientsMapping);
+    document.getElementById("btn-ing-apply-all").addEventListener("click", applySuggestionsToAll);
+
+    // 8. Staff View Actions
+    document.getElementById("staff-search").addEventListener("input", renderStaffTable);
+    document.getElementById("btn-add-staff").addEventListener("click", function() {
+      state.editingStaffId = null;
+      document.getElementById("modal-staff-title").innerText = "Thêm nhân viên bếp";
+      document.getElementById("staff-form-id").value = "";
+      document.getElementById("staff-form-name").value = "";
+      document.getElementById("staff-form-status").value = "Active";
+      openModal("modal-staff");
+    });
+
+    // Modal close buttons
+    document.getElementById("btn-close-modal-dish").addEventListener("click", function() { closeModal("modal-dish"); });
+    document.getElementById("btn-cancel-modal-dish").addEventListener("click", function() { closeModal("modal-dish"); });
+    document.getElementById("btn-submit-modal-dish").addEventListener("click", submitDishForm);
+
+    document.getElementById("btn-close-modal-import").addEventListener("click", function() { closeModal("modal-import"); });
+    document.getElementById("btn-cancel-modal-import").addEventListener("click", function() { closeModal("modal-import"); });
+    document.getElementById("btn-submit-modal-import").addEventListener("click", submitImportForm);
+
+    document.getElementById("btn-close-modal-staff").addEventListener("click", function() { closeModal("modal-staff"); });
+    document.getElementById("btn-cancel-modal-staff").addEventListener("click", function() { closeModal("modal-staff"); });
+    document.getElementById("btn-submit-modal-staff").addEventListener("click", submitStaffForm);
+
+    document.getElementById("btn-close-modal-daily").addEventListener("click", function() { closeModal("modal-daily"); });
+    document.getElementById("btn-cancel-modal-daily").addEventListener("click", function() { closeModal("modal-daily"); });
+    document.getElementById("btn-submit-modal-daily").addEventListener("click", submitDailyRowForm);
+
+    document.getElementById("btn-close-modal-confirm").addEventListener("click", function() { closeModal("modal-confirm"); });
+    document.getElementById("btn-cancel-modal-confirm").addEventListener("click", function() { closeModal("modal-confirm"); });
+    document.getElementById("btn-submit-modal-confirm").addEventListener("click", executeMonthlyGeneration);
+  }
+
+  function openModal(id) {
+    var modal = document.getElementById(id);
+    modal.classList.remove("hidden");
+    // Trigger paint reflow before opacity transitions
+    setTimeout(function() {
+      modal.classList.add("show");
+    }, 10);
+  }
+
+  function closeModal(id) {
+    var modal = document.getElementById(id);
+    modal.classList.remove("show");
+    setTimeout(function() {
+      modal.classList.add("hidden");
+    }, 250);
+  }
+
+</script>
